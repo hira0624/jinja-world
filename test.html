@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>バーチャル神社 - かんたんデモ</title>
+  <!-- A-Frame CDN -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
+    .ui {
+      position: fixed; left: 12px; bottom: 12px; z-index: 10;
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(6px);
+      border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.15);
+      padding: 12px; display: grid; gap: 8px; width: min(92vw, 360px);
+    }
+    .ui h3 { margin: 0 0 4px; font-size: 14px; opacity: .75; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+    button, select {
+      border-radius: 10px; padding: 10px 12px; border: 1px solid #e5e7eb;
+      background: white; cursor: pointer; font-weight: 600;
+    }
+    button:hover { background: #f7f7f7; }
+    .panel {
+      position: fixed; right: 12px; bottom: 12px; z-index: 10;
+      background: rgba(255,255,255,0.96); border-radius: 12px; padding: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.15); width: min(92vw, 360px);
+    }
+    .panel h2{ margin:0 0 8px; font-size: 16px; }
+    .fortune { font-size: 28px; font-weight: 800; }
+    canvas { width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb; }
+    .hint { position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.6); color: #fff; padding: 6px 10px; border-radius: 999px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="hint">ドラッグで視点移動 / ホイールで拡大縮小 / 画面内のオブジェクトをクリック</div>
+
+  <!-- かんたんUI（お守り生成 & 御朱印ダウンロード） -->
+  <div class="ui">
+    <h3>お守りを作る</h3>
+    <div class="row">
+      <select id="wish">
+        <option value="合格祈願">合格祈願</option>
+        <option value="恋愛成就">恋愛成就</option>
+        <option value="商売繁盛">商売繁盛</option>
+        <option value="健康長寿">健康長寿</option>
+        <option value="交通安全">交通安全</option>
+      </select>
+      <select id="color">
+        <option value="#6B5C82">出雲紫</option>
+        <option value="#e11d48">朱</option>
+        <option value="#2563eb">藍</option>
+        <option value="#16a34a">翠</option>
+        <option value="#f59e0b">金</option>
+      </select>
+    </div>
+    <button id="makeOmamori">お守りを生成して社前に配置</button>
+    <button id="makeGoshuin">御朱印を作成（右パネルに表示）</button>
+  </div>
+
+  <!-- 右下パネル（おみくじ結果・御朱印） -->
+  <div class="panel" id="sidePanel" hidden>
+    <h2 id="panelTitle"></h2>
+    <div id="omikujiResult" class="fortune"></div>
+    <canvas id="goshuinCanvas" width="640" height="900" hidden></canvas>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button id="downloadBtn" hidden>御朱印をダウンロード</button>
+      <button id="closePanel">閉じる</button>
+    </div>
+  </div>
+
+  <!-- 3Dシーン -->
+  <a-scene background="color: #e6f0ff">
+    <!-- カメラ -->
+    <a-entity id="rig" position="0 1.6 4">
+      <a-entity camera look-controls wasd-controls="acceleration: 20"></a-entity>
+    </a-entity>
+
+    <!-- 地面 -->
+    <a-entity geometry="primitive: plane; width: 40; height: 40" rotation="-90 0 0"
+              material="color: #d9ead3; roughness: 1"></a-entity>
+
+    <!-- 鳥居（シンプル造形） -->
+    <a-entity position="0 0 -2">
+      <a-box color="#b91c1c" width="4" height="0.25" depth="0.4" position="0 2 0"></a-box>
+      <a-box color="#991b1b" width="4.4" height="0.15" depth="0.45" position="0 2.2 0"></a-box>
+      <a-box color="#7f1d1d" width="0.25" height="2" depth="0.25" position="-1.6 1 0"></a-box>
+      <a-box color="#7f1d1d" width="0.25" height="2" depth="0.25" position="1.6 1 0"></a-box>
+    </a-entity>
+
+    <!-- 社殿（箱で表現） -->
+    <a-entity id="shrine" position="0 0 -8">
+      <a-box color="#8b5cf6" width="6" height="3" depth="5" position="0 1.5 0"></a-box>
+      <a-cone color="#6d28d9" radius-bottom="3.6" height="1.2" position="0 3 0" rotation="0 0 0"></a-cone>
+      <a-text value="拝殿" align="center" width="6" position="0 3.4 2.6"></a-text>
+    </a-entity>
+
+    <!-- おみくじ箱（クリックで結果） -->
+    <a-entity id="omikujiBox" position="-2 0.8 -5" class="clickable">
+      <a-box color="#7c2d12" width="1.2" height="0.8" depth="1"></a-box>
+      <a-text value="おみくじ" align="center" width="3" position="0 0.7 0.6"></a-text>
+    </a-entity>
+
+    <!-- 賽銭箱（ダミー） -->
+    <a-entity position="0 0.6 -6">
+      <a-box color="#a16207" width="1.8" height="0.6" depth="1"></a-box>
+      <a-text value="賽銭箱" align="center" width="3" position="0 0.7 0.6"></a-text>
+    </a-entity>
+
+    <!-- お守り置き場（生成したお守りを並べる） -->
+    <a-entity id="omamoriRack" position="2 0 -6">
+      <a-box color="#e5e7eb" width="2.6" height="1.2" depth="0.2" position="0 1 0"></a-box>
+      <a-text value="お守り" align="center" width="4" position="0 1.7 0"></a-text>
+    </a-entity>
+
+    <!-- 簡易ライト -->
+    <a-entity light="type: ambient; intensity: 0.6"></a-entity>
+    <a-entity light="type: directional; intensity: 0.8" position="1 3 1"></a-entity>
+  </a-scene>
+
+  <script>
+    // ===== おみくじロジック =====
+    const fortunes = [
+      {name: '大吉', desc: '最高の運気。願い事は叶いやすい。'},
+      {name: '中吉', desc: '良い兆しが見える。焦らず進めば吉。'},
+      {name: '小吉', desc: '小さな幸運。身の回りに感謝を。'},
+      {name: '吉',   desc: '穏やかに上向き。継続は力なり。'},
+      {name: '末吉', desc: '今は準備のとき。土台を固めよう。'},
+      {name: '凶',   desc: '慎重に。無理をしなければ回避可。'}
+    ];
+
+    const omikujiBox = document.querySelector('#omikujiBox');
+    omikujiBox.addEventListener('click', () => {
+      const f = fortunes[Math.floor(Math.random() * fortunes.length)];
+      showPanel('おみくじ結果', `<div class="fortune">${f.name}</div><div>${f.desc}</div>`);
+    });
+
+    // ===== 御朱印ロジック（Canvasで生成） =====
+    const c = document.getElementById('goshuinCanvas');
+    const ctx = c.getContext('2d');
+    function makeGoshuinImage() {
+      const now = new Date();
+      // 背景（和紙風）
+      ctx.fillStyle = '#faf6f1';
+      ctx.fillRect(0,0,c.width,c.height);
+      // 朱印の円
+      ctx.beginPath();
+      ctx.arc(320, 180, 120, 0, Math.PI*2);
+      ctx.fillStyle = '#e11d48';
+      ctx.fill();
+      // 社名
+      ctx.fillStyle = '#111827';
+      ctx.font = '700 48px "Hiragino Kaku Gothic ProN", "Noto Sans JP"';
+      ctx.textAlign = 'center';
+      ctx.fillText('仮想神社', 320, 360);
+      // 日付
+      ctx.font = '600 28px "Hiragino Kaku Gothic ProN", "Noto Sans JP"';
+      const y = now.getFullYear();
+      const m = String(now.getMonth()+1).padStart(2,'0');
+      const d = String(now.getDate()).padStart(2,'0');
+      ctx.fillText(`${y}年${m}月${d}日`, 320, 410);
+      // 朱印の角印風
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(140, 520, 360, 260);
+      ctx.font = '800 64px "Hiragino Kaku Gothic ProN", "Noto Sans JP"';
+      ctx.fillStyle = '#dc2626';
+      ctx.fillText('御朱印', 320, 660);
+    }
+
+    // ダウンロード
+    document.getElementById('makeGoshuin').addEventListener('click', () => {
+      makeGoshuinImage();
+      document.getElementById('panelTitle').textContent = '御朱印（プレビュー）';
+      document.getElementById('omikujiResult').innerHTML = '';
+      c.hidden = false;
+      document.getElementById('downloadBtn').hidden = false;
+      document.getElementById('sidePanel').hidden = false;
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = c.toDataURL('image/png');
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth()+1).padStart(2,'0');
+      const d = String(now.getDate()).padStart(2,'0');
+      a.download = `goshuin_${y}${m}${d}.png`;
+      a.click();
+    });
+
+    // ===== お守り生成（3Dに配置） =====
+    const rack = document.getElementById('omamoriRack');
+    const makeBtn = document.getElementById('makeOmamori');
+    const wishSel = document.getElementById('wish');
+    const colorSel = document.getElementById('color');
+    let omamoriCount = 0;
+    makeBtn.addEventListener('click', () => {
+      const color = colorSel.value;
+      const wish = wishSel.value;
+      const x = (omamoriCount % 5) * 0.5 - 1.0; // 横に並べる
+      const y = 1.2 - Math.floor(omamoriCount / 5) * 0.6; // 段を下げる
+      const z = 0.1;
+      const id = `omamori-${Date.now()}`;
+      const omamori = document.createElement('a-entity');
+      omamori.setAttribute('position', `${x} ${y} ${z}`);
+      omamori.innerHTML = `
+        <a-box color="${color}" width="0.28" height="0.38" depth="0.05" position="0 0 0"></a-box>
+        <a-text value="${wish}" align="center" width="1.2" position="0 0.02 0.04" color="#111827"></a-text>
+        <a-torus color="#f1f5f9" radius="0.05" radius-tubular="0.01" position="0 0.24 0"></a-torus>
+      `;
+      omamori.id = id;
+      rack.appendChild(omamori);
+      omamoriCount++;
+    });
+
+    // ===== 汎用パネル表示 =====
+    function showPanel(title, html) {
+      document.getElementById('panelTitle').textContent = title;
+      document.getElementById('omikujiResult').innerHTML = html || '';
+      document.getElementById('downloadBtn').hidden = true;
+      document.getElementById('goshuinCanvas').hidden = true;
+      document.getElementById('sidePanel').hidden = false;
+    }
+    document.getElementById('closePanel').addEventListener('click', ()=>{
+      document.getElementById('sidePanel').hidden = true;
+    });
+  </script>
+</body>
+</html>
